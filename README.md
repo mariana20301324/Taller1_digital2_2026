@@ -1,2 +1,139 @@
-# Taller1_digital2_2026
-Juego tipo Simon Dice: el sistema genera una secuencia de 4 LEDs que el jugador debe repetir en el mismo orden. Cada nivel agrega un paso. Pines: LEDs 13,12,27,26; éxito 22; fallo 23; botones 15,4,18,21; START 25; STOP 5. Indicaciones: Presiona START, observa la secuencia y repítela. STOP reinicia.
+# Taller1_digital2_2026 
+#Juego tipo Simon Dice: el sistema genera una secuencia de 4 LEDs que el jugador debe repetir en el mismo orden. Cada nivel agrega un paso. Pines: LEDs 13,12,27,26; éxito 22; fallo 23; botones 15,4,18,21; START 25; STOP 5. Indicaciones: Presiona START, observa la secuencia y repítela. STOP reinicia.
+
+from machine import Pin
+import time
+import random
+
+led_pines = [13, 12, 27, 26]
+leds = [Pin(p, Pin.OUT) for p in led_pines]
+
+# LEDs de estado
+led_exito = Pin(22, Pin.OUT)
+led_fallo = Pin(23, Pin.OUT)
+
+# Botones jugador
+boton_pines = [15, 4, 18, 21]
+botones = [Pin(p, Pin.IN, Pin.PULL_DOWN) for p in boton_pines]
+
+# Botón START (solo iniciar)
+boton_start = Pin(25, Pin.IN, Pin.PULL_DOWN)
+
+# Botón STOP / RESTART (con interrupción)
+boton_stop = Pin(5, Pin.IN, Pin.PULL_DOWN)
+
+
+detener = False
+DEBOUNCE_MS = 150
+
+
+def isr_stop(pin):
+    global detener
+    detener = True
+
+boton_stop.irq(trigger=Pin.IRQ_RISING, handler=isr_stop)
+
+def apagar_leds():
+    for led in leds:
+        led.value(0)
+    led_exito.value(0)
+    led_fallo.value(0)
+
+def mostrar_secuencia(secuencia):
+    for paso in secuencia:
+        if detener:
+            return
+        leds[paso].value(1)
+        time.sleep(0.5)
+        leds[paso].value(0)
+        time.sleep(0.3)
+
+def animacion_exito():
+    print("🎉 Nivel superado")
+    led_exito.value(1)
+    time.sleep(0.8)
+    led_exito.value(0)
+
+def animacion_fallo():
+    print("💥 Error")
+    for _ in range(3): #indica cuántas veces se enciende el led al perder
+        led_fallo.value(1)
+        time.sleep(0.3)
+        led_fallo.value(0)
+        time.sleep(0.3)
+
+def esperar_pulsacion():
+    while True:
+        if detener:
+            return None
+
+        for i, boton in enumerate(botones):
+            if boton.value():
+                time.sleep_ms(DEBOUNCE_MS)
+                if boton.value():
+                    while boton.value():
+                        pass
+                    return i
+
+def simon_dice():
+    global detener
+    secuencia = []
+    nivel = 1
+
+    print("\n🎮 Juego iniciado")
+
+    while True:
+
+        if detener:
+            print("\n🛑 Juego detenido")
+            detener = False
+            return
+
+        print(f"\n📈 Nivel {nivel}")
+        secuencia.append(random.randint(0, 3))
+
+        print("👀 Observa la secuencia")
+        time.sleep(1)
+        mostrar_secuencia(secuencia)
+
+        if detener:
+            continue
+
+        print("👉 Repite la secuencia")
+
+        for paso_correcto in secuencia:
+
+            boton = esperar_pulsacion()
+
+            if boton is None:
+                return
+
+            leds[boton].value(1)
+            time.sleep(0.3)
+            leds[boton].value(0)
+
+            if boton != paso_correcto:
+                print("\n❌ Perdiste")
+                print(f"🏆 Nivel alcanzado: {nivel}")
+                animacion_fallo()
+                print("Presiona START para jugar nuevamente")
+                return
+
+        animacion_exito()
+        nivel += 1
+        time.sleep(1)
+
+
+while True:
+    apagar_leds()
+    print("\nPresiona START para comenzar")
+
+    while not boton_start.value():
+        pass
+
+    time.sleep_ms(DEBOUNCE_MS)
+    while boton_start.value():
+        pass
+
+    detener = False
+    simon_dice()
